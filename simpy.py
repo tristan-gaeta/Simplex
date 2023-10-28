@@ -3,7 +3,7 @@ __author__ = 'Tristan Gaeta'
 __doc__ = """The SimPy library can solve linear programs using the simplex method
 
 SimPy uses the two phase method to solve LPs. All problems are converted
-to canonical form and use a phase-1 LP to find an initial basic feasible 
+to canonical form and use a phase-1 LP to find an initial basic feasible
 solution.
 
 See the SimPy user guide for more details.
@@ -56,22 +56,22 @@ def __canonize__(c, A_eq=None, b_eq=None, A_leq=None, b_leq=None, A_geq=None, b_
     __check_dims__(A_geq, b_geq, c)
 
     # we will treat inequalities the same by multiplying geq constraints by -1
-    A_ineq = np.vstack((A_leq, -A_geq))
+    A_pos = np.vstack((A_eq, A_leq, -A_geq))
 
-    num_ineq, _ = A_ineq.shape
-    num_eq, _ = A_eq.shape
+    num_ineq = A_leq.shape[0] + A_geq.shape[0]
+    num_eq = A_eq.shape[0]
+
+    A_neg = -A_pos if unbounded else np.empty((A_pos.shape[0], 0))
+    c_neg = -c if unbounded else np.empty(0)
 
     # --Canonical Form--
+    slack = np.vstack((
+        np.zeros((num_eq, num_ineq)),
+        np.eye(num_ineq)
+    ))
     b = np.hstack((b_eq, b_leq, -b_geq))
-    A = np.block([
-        [A_eq, np.zeros((num_eq, num_ineq))],
-        [A_ineq, np.eye(num_ineq)]
-    ])
-    c = np.hstack((c, np.zeros(num_ineq)))
-
-    if unbounded:
-        A = np.hstack(A, -A)
-        c = np.hstack(c, -c)
+    A = np.hstack((A_pos, A_neg, slack))
+    c = np.hstack((c, c_neg, np.zeros(num_ineq)))
 
     return (A, b, c)
 
@@ -107,13 +107,12 @@ def __init_problem__(A: np.matrix, b: np.ndarray) -> tuple[np.ndarray, np.ndarra
 
         # it is possible for some nonbasic vars to be zero, so
         # well just say the basic vars are the m largest vars
-        vars = np.argsort(x)
-        basic_vars = vars[n-m:]
-        nonbasic_vars = vars[:n-m]
+        vars = np.argpartition(x, n-m)
+        basic_vars, nonbasic_vars = np.split(vars, (n-m,))
     return (x, basic_vars, nonbasic_vars)
 
 
-def simplex(A: np.ndarray, b: np.ndarray, c: np.ndarray, form: str = 'canonical', minimize: bool = False, print_steps: bool = False, **kwargs) -> tuple[float, np.ndarray]:
+def simplex(A: np.matrix, b: np.ndarray, c: np.ndarray, form: str = 'canonical', minimize: bool = False, unbounded:bool=False, print_steps: bool = False, **kwargs) -> tuple[float, np.ndarray]:
     """Perform the simplex algorithm on the given LP with positive variable constraints
 
     Parameters
@@ -123,7 +122,7 @@ def simplex(A: np.ndarray, b: np.ndarray, c: np.ndarray, form: str = 'canonical'
     b : ndarray
         The constraint vector (a 1D ndarray).
     c : ndarray
-        The objective value.
+        The objective value (a 1D ndarray).
     form : str, optional
         Either 'canonical', 'standard', or 'normal' (Default is 'canonical').
     minimize : bool, optional
@@ -185,6 +184,8 @@ def simplex(A: np.ndarray, b: np.ndarray, c: np.ndarray, form: str = 'canonical'
         # Step 2: check for optimality
         if np.max(reduced_costs) <= 0:  # if all non-positive
             # truncate slack/surplus vars that we introduced
+            if unbounded:
+                x[:initial_size] -= x[initial_size:2*initial_size]
             c = c[:initial_size]
             x = x[:initial_size]
             if minimize:
@@ -201,7 +202,7 @@ def simplex(A: np.ndarray, b: np.ndarray, c: np.ndarray, form: str = 'canonical'
         if np.min(dB) >= 0:
             raise ValueError('This problem is unbounded.')
 
-        with np.errstate(divide='ignore'):  # ignore divide by zero warning
+        with np.errstate(divide='ignore', invalid='ignore'):  # ignore divide by zero warning
             ratios = xB / -dB
 
         # ignore components with nonnegative values by setting ratio to infinity

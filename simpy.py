@@ -1,6 +1,4 @@
-__package__ = 'simpy'
-__author__ = 'Tristan Gaeta'
-__doc__ = """The SimPy library can solve linear programs using the simplex method
+"""The SimPy library can solve linear programs using the simplex method
 
 SimPy uses the two phase method to solve LPs. All problems are converted
 to canonical form and use a phase-1 LP to find an initial basic feasible
@@ -8,6 +6,8 @@ solution.
 
 See the SimPy user guide for more details.
 """
+
+__author__ = 'Tristan Gaeta'
 
 import numpy as np
 
@@ -25,14 +25,12 @@ def __check_dims__(A: np.matrix, b: np.ndarray, c: np.ndarray) -> None:
 
     m, n = A.shape
     if b.shape != (m,):
-        raise ValueError(
-            f'Arguments A and b have incompatible dimensions: {A.shape} and {b.shape}. Should be (m,n) and (m,).')
+        raise ValueError(f'Arguments A and b have incompatible dimensions: {A.shape} and {b.shape}. Should be (m,n) and (m,).')
     if c.shape != (n,):
-        raise ValueError(
-            f'Arguments A and c have incompatible dimensions: {A.shape} and {c.shape}. Should be (m,n) and (n,).')
+        raise ValueError(f'Arguments A and c have incompatible dimensions: {A.shape} and {c.shape}. Should be (m,n) and (n,).')
 
 
-def __canonize__(c, A_eq=None, b_eq=None, A_leq=None, b_leq=None, A_geq=None, b_geq=None, unbounded=False) -> tuple[np.matrix, np.ndarray, np.ndarray]:
+def __canonize__(c, unbounded=False, A_eq=None, b_eq=None, A_leq=None, b_leq=None, A_geq=None, b_geq=None) -> tuple[np.matrix, np.ndarray, np.ndarray]:
     """Convert the given LP to canonical form
 
     This function also serves to cast input ArrayLike objects to float ndarrays.
@@ -108,11 +106,11 @@ def __init_problem__(A: np.matrix, b: np.ndarray) -> tuple[np.ndarray, np.ndarra
         # it is possible for some nonbasic vars to be zero, so
         # well just say the basic vars are the m largest vars
         vars = np.argpartition(x, n-m)
-        basic_vars, nonbasic_vars = np.split(vars, (n-m,))
+        nonbasic_vars, basic_vars = np.split(vars, (n-m,))
     return (x, basic_vars, nonbasic_vars)
 
 
-def simplex(A: np.matrix, b: np.ndarray, c: np.ndarray, form: str = 'canonical', minimize: bool = False, unbounded:bool=False, print_steps: bool = False, **kwargs) -> tuple[float, np.ndarray]:
+def simplex(A: np.matrix, b: np.ndarray, c: np.ndarray, form: str = 'canonical', minimize: bool = False, print_steps: bool = False, **kwargs) -> tuple[float, np.ndarray]:
     """Perform the simplex algorithm on the given LP with positive variable constraints
 
     Parameters
@@ -146,7 +144,7 @@ def simplex(A: np.matrix, b: np.ndarray, c: np.ndarray, form: str = 'canonical',
     # convert to canonical form
     match (form):
         case 'canonical' | 'eq':
-            A, b, c = __canonize__(c, A_eq=A, b_eq=b,  **kwargs)
+            A, b, c = __canonize__(c,  A_eq=A, b_eq=b,  **kwargs)
         case 'standard' | 'leq':
             A, b, c = __canonize__(c, A_leq=A, b_leq=b,  **kwargs)
         case 'normal' | 'geq':
@@ -184,7 +182,7 @@ def simplex(A: np.matrix, b: np.ndarray, c: np.ndarray, form: str = 'canonical',
         # Step 2: check for optimality
         if np.max(reduced_costs) <= 0:  # if all non-positive
             # truncate slack/surplus vars that we introduced
-            if unbounded:
+            if kwargs.get('unbounded') == True:
                 x[:initial_size] -= x[initial_size:2*initial_size]
             c = c[:initial_size]
             x = x[:initial_size]
